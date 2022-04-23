@@ -1,6 +1,7 @@
-mod contract;
+pub mod contract;
 pub(crate) mod memory;
 mod stack;
+pub mod bytecode;
 
 pub use contract::Contract;
 pub use memory::Memory;

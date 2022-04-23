@@ -4,11 +4,13 @@ use primitive_types::{H160, U256};
 
 use crate::instructions::opcode;
 
+use super::bytecode::Bytecode;
+
 pub struct Contract {
     /// Contracts data
     pub input: Bytes,
     /// Contract code
-    pub code: Bytes,
+    pub code: Bytecode,
     /// code size of original code. Note that current code is extended with push padding and STOP at end
     pub code_size: usize,
     /// Contract address
@@ -18,7 +20,7 @@ pub struct Contract {
     /// Value send to contract.
     pub value: U256,
     /// Precomputed valid jump addresses
-    jumpdest: ValidJumpAddress,
+    analysis: BytecodeAnalysis,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -57,13 +59,14 @@ impl AnalysisData {
 impl Contract {
     pub fn new<SPEC: Spec>(
         input: Bytes,
-        code: Bytes,
+        code: &mut Bytecode,
         address: H160,
         caller: H160,
         value: U256,
     ) -> Self {
         let code_size = code.len();
-        let (jumpdest, code) = Self::analyze::<SPEC>(code.as_ref());
+
+        let (analysis, code) = Self::analyze::<SPEC>(code.as_ref());
 
         let code = code.into();
         Self {
@@ -73,13 +76,27 @@ impl Contract {
             address,
             caller,
             value,
-            jumpdest,
+            analysis,
         }
     }
 
+    pub fn new_with_context<SPEC: Spec>(
+        input: Bytes,
+        code: &mut Bytecode,
+        call_context: &CallContext,
+    ) -> Self {
+        Self::new::<SPEC>(
+            input,
+            code,
+            call_context.address,
+            call_context.caller,
+            call_context.apparent_value,
+        )
+    }
+
     /// Create a new valid mapping from given code bytes.
-    /// it gives back ValidJumpAddress and size od needed paddings.
-    fn analyze<SPEC: Spec>(code: &[u8]) -> (ValidJumpAddress, Vec<u8>) {
+    /// it gives back BytecodeAnalysis and size od needed paddings.
+    fn analyze<SPEC: Spec>(code: &[u8]) -> (BytecodeAnalysis, Vec<u8>) {
         let mut jumps: Vec<AnalysisData> = Vec::with_capacity(code.len() + 33);
         // padding of PUSH32 size plus one for stop
         jumps.resize(code.len() + 33, AnalysisData::none());
@@ -149,43 +166,29 @@ impl Contract {
         let mut code = code.to_vec();
         code.resize(code.len() + padding + 1, 0);
 
-        (ValidJumpAddress::new(jumps, first_gas_block), code)
+        (BytecodeAnalysis::new(jumps, first_gas_block), code)
     }
 
     pub fn is_valid_jump(&self, possition: usize) -> bool {
-        self.jumpdest.is_valid(possition)
+        self.analysis.is_valid(possition)
     }
 
     pub fn gas_block(&self, possition: usize) -> u64 {
-        self.jumpdest.gas_block(possition)
+        self.analysis.gas_block(possition)
     }
     pub fn first_gas_block(&self) -> u64 {
-        self.jumpdest.first_gas_block
-    }
-
-    pub fn new_with_context<SPEC: Spec>(
-        input: Bytes,
-        code: Bytes,
-        call_context: &CallContext,
-    ) -> Self {
-        Self::new::<SPEC>(
-            input,
-            code,
-            call_context.address,
-            call_context.caller,
-            call_context.apparent_value,
-        )
+        self.analysis.first_gas_block
     }
 }
 
 /// Mapping of valid jump destination from code.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ValidJumpAddress {
+pub struct BytecodeAnalysis {
     first_gas_block: u64,
     analysis: Vec<AnalysisData>,
 }
 
-impl ValidJumpAddress {
+impl BytecodeAnalysis {
     pub fn new(analysis: Vec<AnalysisData>, first_gas_block: u64) -> Self {
         Self {
             analysis,
