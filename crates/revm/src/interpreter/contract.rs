@@ -77,15 +77,15 @@ impl Contract {
         }
     }
 
-    pub fn is_valid_jump(&self, possition: usize) -> bool {
-        self.bytecode.jumptable().is_valid(possition)
+    pub fn is_valid_jump(&mut self, possition: usize) -> bool {
+        self.bytecode.is_valid_jump(possition)
     }
 
-    pub fn gas_block(&self, possition: usize) -> u64 {
-        self.bytecode.jumptable().gas_block(possition)
+    pub fn gas_block(&mut self, possition: usize) -> u64 {
+        self.bytecode.gas_block(possition)
     }
     pub fn first_gas_block(&self) -> u64 {
-        self.bytecode.jumptable().first_gas_block as u64
+        self.bytecode.jit_state().first_gas_block as u64
     }
 
     pub fn new_with_context<SPEC: Spec>(
@@ -145,6 +145,17 @@ impl ValidJumpAddress {
     pub fn gas_block(&self, position: usize) -> u64 {
         self.analysis[position].gas_block()
     }
+}
+
+/// Mapping of valid jump destination from code.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct JitJumpValidatorState {
+    pub first_gas_block: u32,
+    /// Rc is used here so that we dont need to copy vector. We can move it to more suitable more accessable structure
+    /// without copying underlying vec.
+    pub analysis: Arc<Vec<AnalysisData>>,
+    pub index: usize,
 }
 
 #[cfg(test)]

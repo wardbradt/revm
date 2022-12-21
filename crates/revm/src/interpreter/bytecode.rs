@@ -1,7 +1,8 @@
 use super::contract::{AnalysisData, ValidJumpAddress};
-use crate::{common::keccak256, opcode, spec_opcode_gas, Spec, B256, KECCAK_EMPTY};
+use crate::{common::keccak256, opcode, spec_opcode_gas, Spec, B256, KECCAK_EMPTY, SpecId};
 use bytes::Bytes;
 use std::sync::Arc;
+use crate::interpreter::contract::JitJumpValidatorState;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
@@ -14,6 +15,10 @@ pub enum BytecodeState {
         len: usize,
         jumptable: ValidJumpAddress,
     },
+    JITAnalyzed {
+        len: usize,
+        jit_state: JitJumpValidatorState,
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -128,6 +133,7 @@ impl Bytecode {
             BytecodeState::Raw => self.bytecode.is_empty(),
             BytecodeState::Checked { len } => len == 0,
             BytecodeState::Analysed { len, .. } => len == 0,
+            BytecodeState::JITAnalyzed { len, .. } => len == 0,
         }
     }
 
@@ -136,6 +142,7 @@ impl Bytecode {
             BytecodeState::Raw => self.bytecode.len(),
             BytecodeState::Checked { len, .. } => len,
             BytecodeState::Analysed { len, .. } => len,
+            BytecodeState::JITAnalyzed { len, .. } => len,
         }
     }
 
@@ -152,6 +159,26 @@ impl Bytecode {
                 }
             }
             _ => self,
+        }
+    }
+
+    pub fn to_jit_analyzed<SPEC: Spec>(self) -> Self {
+        let hash = self.hash;
+        let (bytecode, len) = match self.state {
+            BytecodeState::Raw => {
+                let len = self.bytecode.len();
+                let checked = self.to_checked();
+                (checked.bytecode, len)
+            }
+            BytecodeState::Checked { len } => (self.bytecode, len),
+            _ => return self,
+        };
+        let jit_state = Self::analyze_first_gas_block::<SPEC>(bytecode.as_ref());
+
+        Self {
+            bytecode,
+            hash,
+            state: BytecodeState::JITAnalyzed { len, jit_state },
         }
     }
 
@@ -180,17 +207,51 @@ impl Bytecode {
             bytecode,
             hash,
             state,
-        } = self.to_analysed::<SPEC>();
-        if let BytecodeState::Analysed { len, jumptable } = state {
+        } = self.to_jit_analyzed::<SPEC>();
+        if let BytecodeState::JITAnalyzed { len, jit_state } = state {
             BytecodeLocked {
                 bytecode,
                 len,
                 hash,
-                jumptable,
+                jit_state,
+                spec_id: SPEC::SPEC_ID,
             }
         } else {
             unreachable!("to_analysed transforms state to analysed");
         }
+    }
+
+    fn analyze_first_gas_block<SPEC: Spec>(code: &[u8]) -> JitJumpValidatorState {
+        let opcode_gas = spec_opcode_gas(SPEC::SPEC_ID);
+
+        let mut jit_state = JitJumpValidatorState {
+            first_gas_block: 0,
+            analysis: Arc::new(vec![AnalysisData::none(); code.len()]),
+            index: 0,
+        };
+        let jumps = Arc::get_mut(&mut jit_state.analysis).unwrap();
+
+        // first gas block
+        while jit_state.index < code.len() {
+            let opcode = *code.get(jit_state.index).unwrap();
+            let info = opcode_gas.get(opcode as usize).unwrap();
+            jit_state.first_gas_block += info.get_gas();
+
+            jit_state.index += if info.is_push() {
+                ((opcode - opcode::PUSH1) + 2) as usize
+            } else {
+                1
+            };
+
+            if info.is_gas_block_end() {
+                if info.is_jump() {
+                    jumps.get_mut(0).unwrap().set_is_jump();
+                }
+                break;
+            }
+        }
+
+        jit_state
     }
 
     /// Analyze bytecode to get jumptable and gas blocks.
@@ -266,7 +327,8 @@ pub struct BytecodeLocked {
     bytecode: Bytes,
     len: usize,
     hash: B256,
-    jumptable: ValidJumpAddress,
+    jit_state: JitJumpValidatorState,
+    spec_id: SpecId,
 }
 
 impl BytecodeLocked {
@@ -289,9 +351,9 @@ impl BytecodeLocked {
         Bytecode {
             bytecode: self.bytecode,
             hash: self.hash,
-            state: BytecodeState::Analysed {
+            state: BytecodeState::JITAnalyzed {
                 len: self.len,
-                jumptable: self.jumptable,
+                jit_state: self.jit_state,
             },
         }
     }
@@ -303,7 +365,72 @@ impl BytecodeLocked {
         &self.bytecode.as_ref()[..self.len]
     }
 
-    pub fn jumptable(&self) -> &ValidJumpAddress {
-        &self.jumptable
+    pub fn jit_state(&self) -> &JitJumpValidatorState {
+        &self.jit_state
+    }
+
+    pub fn is_valid_jump(&mut self, position: usize) -> bool {
+        if position >= self.jit_state.analysis.len() {
+            return false;
+        }
+        self.analyze_to_pos(position);
+        self.jit_state.analysis[position].is_jump()
+    }
+
+    pub fn gas_block(&mut self, position: usize) -> u64 {
+        self.analyze_to_pos(position);
+        self.jit_state.analysis[position].gas_block()
+    }
+
+    /// Analyzes until the gas block containing position,
+    /// at which point self.jit_state.index > position.
+    pub fn analyze_to_pos(&mut self, position: usize) {
+        if self.jit_state.index > position {
+            // We have already analyzed position
+            return;
+        }
+
+        let code = self.bytecode.as_ref();
+        let opcode_gas = spec_opcode_gas(self.spec_id);
+        let jumps = Arc::get_mut(&mut self.jit_state.analysis).unwrap();
+
+        let mut block_start: usize = self.jit_state.index - 1;
+        let mut gas_in_block: u32 = 0;
+
+        while self.jit_state.index < code.len() {
+            let opcode = *code.get(self.jit_state.index).unwrap();
+            let info = opcode_gas.get(opcode as usize).unwrap();
+            gas_in_block += info.get_gas();
+
+            if info.is_gas_block_end() {
+                if info.is_jump() {
+                    jumps.get_mut(self.jit_state.index).unwrap().set_is_jump();
+                }
+                jumps
+                    .get_mut(block_start)
+                    .unwrap()
+                    .set_gas_block(gas_in_block);
+
+                block_start = self.jit_state.index;
+                gas_in_block = 0;
+                self.jit_state.index += 1;
+                if self.jit_state.index > position {
+                    return;
+                }
+            } else {
+                self.jit_state.index += if info.is_push() {
+                    ((opcode - opcode::PUSH1) + 2) as usize
+                } else {
+                    1
+                };
+            }
+        }
+
+        if gas_in_block != 0 {
+            jumps
+                .get_mut(block_start)
+                .unwrap()
+                .set_gas_block(gas_in_block);
+        }
     }
 }
