@@ -58,7 +58,7 @@ impl<DB: Database> Inspector<DB> for GasInspector {
             self.was_jumpi = Some(pc);
         } else if info.is_gas_block_end() {
             self.reduced_gas_block = 0;
-            self.full_gas_block = interp.contract.gas_block(pc);
+            self.full_gas_block = interp.contract.gas_block(pc+1);
         } else {
             self.reduced_gas_block += info.get_gas() as u64;
         }
@@ -76,18 +76,18 @@ impl<DB: Database> Inspector<DB> for GasInspector {
     ) -> Return {
         let pc = interp.program_counter();
         if let Some(was_pc) = self.was_jumpi {
+            // TODO: simplify the below ifs into something like:
+            // if self.was_jumpi.is_some() && self.was_jumpi == pc.checked_sub(1) {}
             if let Some(new_pc) = pc.checked_sub(1) {
                 if was_pc == new_pc {
                     self.reduced_gas_block = 0;
-                    self.full_gas_block = interp.contract.gas_block(was_pc);
+                    self.full_gas_block = interp.contract.gas_block(pc);
                 }
             }
             self.was_jumpi = None;
         } else if self.was_return {
-            // we are ok to decrement PC by one as it is return of call
-            let previous_pc = pc - 1;
             self.reduced_gas_block = 0;
-            self.full_gas_block = interp.contract.gas_block(previous_pc);
+            self.full_gas_block = interp.contract.gas_block(pc);
             self.was_return = false;
         }
         self.gas_remaining =

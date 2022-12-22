@@ -27,7 +27,7 @@ pub fn jumpi(interpreter: &mut Interpreter, _host: &mut dyn Host) {
         } else {
             interpreter.instruction_result = Return::InvalidJump
         }
-    } else if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter() - 1) {
+    } else if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
         // if we are not doing jump, add next gas block.
         interpreter.instruction_result = ret;
     }
@@ -35,7 +35,7 @@ pub fn jumpi(interpreter: &mut Interpreter, _host: &mut dyn Host) {
 
 pub fn jumpdest(interpreter: &mut Interpreter, _host: &mut dyn Host) {
     gas!(interpreter, gas::JUMPDEST);
-    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter() - 1) {
+    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
         interpreter.instruction_result = ret;
     }
 }

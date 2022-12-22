@@ -173,7 +173,10 @@ impl Bytecode {
             BytecodeState::Checked { len } => (self.bytecode, len),
             _ => return self,
         };
-        let jit_state = Self::analyze_first_gas_block::<SPEC>(bytecode.as_ref());
+        let jit_state = JitJumpValidatorState {
+            analysis: vec![AnalysisData::none(); bytecode.len()],
+            index: 0,
+        };
 
         Self {
             bytecode,
@@ -219,39 +222,6 @@ impl Bytecode {
         } else {
             unreachable!("to_analysed transforms state to analysed");
         }
-    }
-
-    fn analyze_first_gas_block<SPEC: Spec>(code: &[u8]) -> JitJumpValidatorState {
-        let opcode_gas = spec_opcode_gas(SPEC::SPEC_ID);
-
-        let mut jit_state = JitJumpValidatorState {
-            first_gas_block: 0,
-            analysis: vec![AnalysisData::none(); code.len()],
-            index: 0,
-        };
-        let jumps = &mut jit_state.analysis;
-
-        // first gas block
-        while jit_state.index < code.len() {
-            let opcode = *code.get(jit_state.index).unwrap();
-            let info = opcode_gas.get(opcode as usize).unwrap();
-            jit_state.first_gas_block += info.get_gas();
-
-            jit_state.index += if info.is_push() {
-                ((opcode - opcode::PUSH1) + 2) as usize
-            } else {
-                1
-            };
-
-            if info.is_gas_block_end() {
-                if info.is_jump() {
-                    jumps.get_mut(0).unwrap().set_is_jump();
-                }
-                break;
-            }
-        }
-
-        jit_state
     }
 
     /// Analyze bytecode to get jumptable and gas blocks.
@@ -378,8 +348,7 @@ impl BytecodeLocked {
     }
 
     pub fn gas_block(&mut self, position: usize) -> u64 {
-        // We have to analyze to position+1 to get the gas block at position.
-        self.analyze_to_pos(position+1);
+        self.analyze_to_pos(position);
         self.jit_state.analysis[position].gas_block()
     }
 
@@ -395,7 +364,7 @@ impl BytecodeLocked {
         let opcode_gas = spec_opcode_gas(self.spec_id);
         let jumps = &mut self.jit_state.analysis;
 
-        let mut block_start: usize = self.jit_state.index - 1;
+        let mut block_start: usize = self.jit_state.index;
         let mut gas_in_block: u32 = 0;
 
         while self.jit_state.index < code.len() {
@@ -412,12 +381,12 @@ impl BytecodeLocked {
                     .unwrap()
                     .set_gas_block(gas_in_block);
 
-                block_start = self.jit_state.index;
                 gas_in_block = 0;
                 self.jit_state.index += 1;
                 if self.jit_state.index > position {
                     return;
                 }
+                block_start = self.jit_state.index;
             } else {
                 self.jit_state.index += if info.is_push() {
                     ((opcode - opcode::PUSH1) + 2) as usize

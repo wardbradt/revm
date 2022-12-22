@@ -161,7 +161,7 @@ pub fn sstore<SPEC: Spec>(interpreter: &mut Interpreter, host: &mut dyn Host) {
         gas::sstore_cost::<SPEC>(original, old, new, remaining_gas, is_cold)
     });
     refund!(interpreter, gas::sstore_refund::<SPEC>(original, old, new));
-    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter() - 1) {
+    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
         interpreter.instruction_result = ret;
     }
 }
@@ -291,7 +291,7 @@ pub fn create<const IS_CREATE2: bool, SPEC: Spec>(
             push_b256!(interpreter, B256::zero());
         }
     }
-    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter() - 1) {
+    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
         interpreter.instruction_result = ret;
     }
 }
@@ -487,7 +487,7 @@ pub fn call_inner<SPEC: Spec>(
             push!(interpreter, U256::ZERO);
         }
     }
-    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter() - 1) {
+    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
         interpreter.instruction_result = ret;
     }
 }

@@ -84,8 +84,8 @@ impl Contract {
     pub fn gas_block(&mut self, possition: usize) -> u64 {
         self.bytecode.gas_block(possition)
     }
-    pub fn first_gas_block(&self) -> u64 {
-        self.bytecode.jit_state().first_gas_block as u64
+    pub fn first_gas_block(&mut self) -> u64 {
+        self.bytecode.gas_block(0)
     }
 
     pub fn new_with_context<SPEC: Spec>(
@@ -151,9 +151,6 @@ impl ValidJumpAddress {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct JitJumpValidatorState {
-    pub first_gas_block: u32,
-    /// Rc is used here so that we dont need to copy vector. We can move it to more suitable more accessable structure
-    /// without copying underlying vec.
     pub analysis: Vec<AnalysisData>,
     pub index: usize,
 }

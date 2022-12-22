@@ -133,7 +133,7 @@ pub fn returndatacopy<SPEC: Spec>(interpreter: &mut Interpreter, _host: &mut dyn
 pub fn gas(interpreter: &mut Interpreter, _host: &mut dyn Host) {
     // gas!(interp, gas::BASE);
     push!(interpreter, U256::from(interpreter.gas.remaining()));
-    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter() - 1) {
+    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
         interpreter.instruction_result = ret;
     }
 }
