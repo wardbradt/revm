@@ -154,7 +154,7 @@ pub struct JitJumpValidatorState {
     pub first_gas_block: u32,
     /// Rc is used here so that we dont need to copy vector. We can move it to more suitable more accessable structure
     /// without copying underlying vec.
-    pub analysis: Arc<Vec<AnalysisData>>,
+    pub analysis: Vec<AnalysisData>,
     pub index: usize,
 }
 

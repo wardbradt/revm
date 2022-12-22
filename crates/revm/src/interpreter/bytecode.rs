@@ -226,10 +226,10 @@ impl Bytecode {
 
         let mut jit_state = JitJumpValidatorState {
             first_gas_block: 0,
-            analysis: Arc::new(vec![AnalysisData::none(); code.len()]),
+            analysis: vec![AnalysisData::none(); code.len()],
             index: 0,
         };
-        let jumps = Arc::get_mut(&mut jit_state.analysis).unwrap();
+        let jumps = &mut jit_state.analysis;
 
         // first gas block
         while jit_state.index < code.len() {
@@ -393,7 +393,7 @@ impl BytecodeLocked {
 
         let code = self.bytecode.as_ref();
         let opcode_gas = spec_opcode_gas(self.spec_id);
-        let jumps = Arc::get_mut(&mut self.jit_state.analysis).unwrap();
+        let jumps = &mut self.jit_state.analysis;
 
         let mut block_start: usize = self.jit_state.index - 1;
         let mut gas_in_block: u32 = 0;
