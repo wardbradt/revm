@@ -378,7 +378,8 @@ impl BytecodeLocked {
     }
 
     pub fn gas_block(&mut self, position: usize) -> u64 {
-        self.analyze_to_pos(position);
+        // We have to analyze to position+1 to get the gas block at position.
+        self.analyze_to_pos(position+1);
         self.jit_state.analysis[position].gas_block()
     }
 
