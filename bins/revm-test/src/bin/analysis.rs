@@ -25,7 +25,6 @@ fn main() {
 
     let bytecode_raw = Bytecode::new_raw(contract_data.clone());
     let bytecode_checked = Bytecode::new_raw(contract_data.clone()).to_checked();
-    let bytecode_analysed = Bytecode::new_raw(contract_data).to_analysed::<revm::LondonSpec>();
 
     evm.database(BenchmarkDB::new_bytecode(bytecode_raw));
 
@@ -47,12 +46,4 @@ fn main() {
         let (_, _) = evm.transact();
     }
     println!("Checked elapsed time: {:?}", timer.elapsed());
-
-    evm.database(BenchmarkDB::new_bytecode(bytecode_analysed));
-
-    let timer = Instant::now();
-    for _ in 0..30000 {
-        let (_, _) = evm.transact();
-    }
-    println!("Analysed elapsed time: {:?}", timer.elapsed());
 }
