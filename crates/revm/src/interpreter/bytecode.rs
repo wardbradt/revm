@@ -334,16 +334,11 @@ impl BytecodeLocked {
     }
 
     pub fn jit_state(&self) -> &JitJumpValidatorState {
-        panic!("unreach"); // TODO: clean up
+        unreachable!("jit_state"); // TODO: clean up
     }
 
-    pub fn is_valid_jump(&mut self, position: usize) -> bool {
-        panic!("unreach"); // TODO: clean up
-        if position >= self.jit_state.analysis.len() {
-            return false;
-        }
-        self.analyze_to_pos(position);
-        self.jit_state.analysis[position].is_jump()
+    pub fn is_valid_jump(&mut self, _: usize) -> bool {
+        unreachable!("is_valid_jump"); // TODO: clean up
     }
 
     pub fn gas_block(&mut self, position: usize) -> u64 {
@@ -353,54 +348,7 @@ impl BytecodeLocked {
 
     /// Analyzes until the gas block containing position,
     /// at which point self.jit_state.index > position.
-    pub fn analyze_to_pos(&mut self, position: usize) {
-        panic!("unreach"); // TODO: clean up
-        if self.jit_state.index > position {
-            // We have already analyzed position
-            return;
-        }
-
-        let code = self.bytecode.as_ref();
-        let opcode_gas = spec_opcode_gas(self.spec_id);
-        let jumps = &mut self.jit_state.analysis;
-
-        let mut block_start: usize = self.jit_state.index;
-        let mut gas_in_block: u32 = 0;
-
-        while self.jit_state.index < code.len() {
-            let opcode = *code.get(self.jit_state.index).unwrap();
-            let info = opcode_gas.get(opcode as usize).unwrap();
-            gas_in_block += info.get_gas();
-
-            if info.is_gas_block_end() {
-                if info.is_jump() {
-                    jumps.get_mut(self.jit_state.index).unwrap().set_is_jump();
-                }
-                jumps
-                    .get_mut(block_start)
-                    .unwrap()
-                    .set_gas_block(gas_in_block);
-
-                gas_in_block = 0;
-                self.jit_state.index += 1;
-                if self.jit_state.index > position {
-                    return;
-                }
-                block_start = self.jit_state.index;
-            } else {
-                self.jit_state.index += if info.is_push() {
-                    ((opcode - opcode::PUSH1) + 2) as usize
-                } else {
-                    1
-                };
-            }
-        }
-
-        if gas_in_block != 0 {
-            jumps
-                .get_mut(block_start)
-                .unwrap()
-                .set_gas_block(gas_in_block);
-        }
+    pub fn analyze_to_pos(&mut self, _: usize) {
+        unreachable!("analyze_to_pos"); // TODO: clean up
     }
 }
