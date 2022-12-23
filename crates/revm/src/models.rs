@@ -274,9 +274,8 @@ pub struct CfgEnv {
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AnalysisKind {
     Raw,
-    Check,
     #[default]
-    Analyse,
+    Check,
 }
 
 impl Default for CfgEnv {

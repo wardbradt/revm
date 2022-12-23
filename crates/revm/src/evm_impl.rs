@@ -546,9 +546,6 @@ impl<'a, GSPEC: Spec, DB: Database, const INSPECT: bool> EVMImpl<'a, GSPEC, DB, 
                 let bytecode = match self.data.env.cfg.perf_analyse_created_bytecodes {
                     AnalysisKind::Raw => Bytecode::new_raw(bytes.clone()),
                     AnalysisKind::Check => Bytecode::new_raw(bytes.clone()).to_checked(),
-                    AnalysisKind::Analyse => {
-                        Bytecode::new_raw(bytes.clone()).to_analysed::<GSPEC>()
-                    }
                 };
 
                 self.data
