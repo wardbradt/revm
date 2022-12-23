@@ -40,6 +40,8 @@ pub struct Interpreter {
     /// Memory limit. See [`crate::CfgEnv`].
     #[cfg(feature = "memory_limit")]
     pub memory_limit: u64,
+    /// Jump table.
+    pub jumptable: JITJumpTable,
 }
 
 impl Interpreter {
@@ -48,6 +50,10 @@ impl Interpreter {
     }
     #[cfg(not(feature = "memory_limit"))]
     pub fn new<SPEC: Spec>(contract: Contract, gas_limit: u64, is_static: bool) -> Self {
+        let jumptable = JITJumpTable {
+            jumps: vec![false; contract.bytecode.len()],
+            index_pointer: contract.bytecode.as_ptr(),
+        };
         Self {
             instruction_pointer: contract.bytecode.as_ptr(),
             return_range: Range::default(),
@@ -58,6 +64,11 @@ impl Interpreter {
             instruction_result: Return::Continue,
             is_static,
             gas: Gas::new(gas_limit),
+            jumptable,
+            // jumptable: JITJumpTable {
+            //     jumps: vec![false; len],
+            //     index_pointer: contract.bytecode.as_ptr(),
+            // },
         }
     }
 
@@ -79,6 +90,10 @@ impl Interpreter {
             is_static,
             gas: Gas::new(gas_limit),
             memory_limit,
+            jumptable: JITJumpTable {
+                jumps: vec![false; contract.bytecode.len()],
+                index_pointer: contract.bytecode.as_ptr(),
+            },
         }
     }
 
@@ -119,9 +134,6 @@ impl Interpreter {
     pub fn run<H: Host, SPEC: Spec>(&mut self, host: &mut H, inspect: bool) -> Return {
         //let timer = std::time::Instant::now();
         // add first gas_block
-        if USE_GAS && !self.gas.record_cost(self.contract.first_gas_block()) {
-            return Return::OutOfGas;
-        }
         if inspect {
             while self.instruction_result == Return::Continue {
                 // step
@@ -167,4 +179,10 @@ impl Interpreter {
             ))
         }
     }
+}
+
+pub struct JITJumpTable {
+    pub jumps: Vec<bool>,
+    // index_pointer is updated on jumps when we have to explore new bytecode for JDs
+    pub index_pointer: *const u8,
 }

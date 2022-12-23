@@ -210,17 +210,18 @@ impl Bytecode {
             bytecode,
             hash,
             state,
-        } = self.to_jit_analyzed::<SPEC>();
-        if let BytecodeState::JITAnalyzed { len, jit_state } = state {
+        } = self.to_checked();
+
+        if let BytecodeState::Checked { len} = state {
             BytecodeLocked {
                 bytecode,
                 len,
                 hash,
-                jit_state,
+                jit_state: JitJumpValidatorState{ analysis: vec![], index: 0 },
                 spec_id: SPEC::SPEC_ID,
             }
         } else {
-            unreachable!("to_analysed transforms state to analysed");
+            unreachable!("to_checked transforms state to checked");
         }
     }
 
@@ -321,10 +322,7 @@ impl BytecodeLocked {
         Bytecode {
             bytecode: self.bytecode,
             hash: self.hash,
-            state: BytecodeState::JITAnalyzed {
-                len: self.len,
-                jit_state: self.jit_state,
-            },
+            state: BytecodeState::Checked {len:self.len},
         }
     }
     pub fn bytecode(&self) -> &[u8] {
@@ -336,10 +334,11 @@ impl BytecodeLocked {
     }
 
     pub fn jit_state(&self) -> &JitJumpValidatorState {
-        &self.jit_state
+        panic!("unreach"); // TODO: clean up
     }
 
     pub fn is_valid_jump(&mut self, position: usize) -> bool {
+        panic!("unreach"); // TODO: clean up
         if position >= self.jit_state.analysis.len() {
             return false;
         }
@@ -355,6 +354,7 @@ impl BytecodeLocked {
     /// Analyzes until the gas block containing position,
     /// at which point self.jit_state.index > position.
     pub fn analyze_to_pos(&mut self, position: usize) {
+        panic!("unreach"); // TODO: clean up
         if self.jit_state.index > position {
             // We have already analyzed position
             return;

@@ -34,7 +34,7 @@ pub fn balance<SPEC: Spec>(interpreter: &mut Interpreter, host: &mut dyn Host) {
 }
 
 pub fn selfbalance<SPEC: Spec>(interpreter: &mut Interpreter, host: &mut dyn Host) {
-    // gas!(interp, gas::LOW);
+    gas!(interpreter, gas::LOW);
     // EIP-1884: Repricing for trie-size-dependent opcodes
     check!(interpreter, SPEC::enabled(ISTANBUL));
     let ret = host.balance(interpreter.contract.address);
@@ -114,7 +114,7 @@ pub fn extcodecopy<SPEC: Spec>(interpreter: &mut Interpreter, host: &mut dyn Hos
 }
 
 pub fn blockhash(interpreter: &mut Interpreter, host: &mut dyn Host) {
-    // gas!(interp, gas::BLOCKHASH);
+    gas!(interpreter, gas::BLOCKHASH);
     pop_top!(interpreter, number);
 
     if let Some(diff) = host.env().block.number.checked_sub(*number) {
@@ -161,9 +161,6 @@ pub fn sstore<SPEC: Spec>(interpreter: &mut Interpreter, host: &mut dyn Host) {
         gas::sstore_cost::<SPEC>(original, old, new, remaining_gas, is_cold)
     });
     refund!(interpreter, gas::sstore_refund::<SPEC>(original, old, new));
-    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
-        interpreter.instruction_result = ret;
-    }
 }
 
 pub fn log<const N: u8, SPEC: Spec>(interpreter: &mut Interpreter, host: &mut dyn Host) {
@@ -290,9 +287,6 @@ pub fn create<const IS_CREATE2: bool, SPEC: Spec>(
         _ => {
             push_b256!(interpreter, B256::zero());
         }
-    }
-    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
-        interpreter.instruction_result = ret;
     }
 }
 
@@ -486,8 +480,5 @@ pub fn call_inner<SPEC: Spec>(
         _ => {
             push!(interpreter, U256::ZERO);
         }
-    }
-    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
-        interpreter.instruction_result = ret;
     }
 }

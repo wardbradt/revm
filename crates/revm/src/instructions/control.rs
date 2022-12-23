@@ -1,12 +1,10 @@
-use crate::{gas, interpreter::Interpreter, Host, Return, Spec, SpecId::*, U256};
+use crate::{gas, interpreter::Interpreter, Host, Return, Spec, SpecId::*, U256, opcode};
 
 pub fn jump(interpreter: &mut Interpreter, _host: &mut dyn Host) {
-    // gas!(interp, gas::MID);
+    gas!(interpreter, gas::MID);
     pop!(interpreter, dest);
     let dest = as_usize_or_fail!(interpreter, dest, Return::InvalidJump);
-    if interpreter.contract.is_valid_jump(dest) {
-        // Safety: In analysis we are checking create our jump table and we do check above to be
-        // sure that jump is safe to execute.
+    if is_valid_jump(interpreter, _host, dest) {
         interpreter.instruction_pointer =
             unsafe { interpreter.contract.bytecode.as_ptr().add(dest) };
     } else {
@@ -15,33 +13,68 @@ pub fn jump(interpreter: &mut Interpreter, _host: &mut dyn Host) {
 }
 
 pub fn jumpi(interpreter: &mut Interpreter, _host: &mut dyn Host) {
-    // gas!(interp, gas::HIGH);
+    gas!(interpreter, gas::HIGH);
     pop!(interpreter, dest, value);
     if value != U256::ZERO {
         let dest = as_usize_or_fail!(interpreter, dest, Return::InvalidJump);
-        if interpreter.contract.is_valid_jump(dest) {
-            // Safety: In analysis we are checking if jump is valid destination and
-            // this `if` makes this unsafe block safe.
+        if is_valid_jump(interpreter, _host, dest) {
+            // TODO: safety comment?
             interpreter.instruction_pointer =
                 unsafe { interpreter.contract.bytecode.as_ptr().add(dest) };
         } else {
-            interpreter.instruction_result = Return::InvalidJump
+            interpreter.instruction_result = Return::InvalidJump;
         }
-    } else if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
-        // if we are not doing jump, add next gas block.
-        interpreter.instruction_result = ret;
     }
+}
+
+fn is_valid_jump(interpreter: &mut Interpreter, _host: &mut dyn Host, dest: usize) -> bool {
+    if dest >= interpreter.contract.bytecode.len() {
+        println!("dest == {} >= interpreter.contract.bytecode.len() == {}", dest, interpreter.contract.bytecode.len());
+        return false;
+    }
+
+    // invariant: we have checked every jumpdest prior to pointer.
+    let mut pointer = std::cmp::max(
+        interpreter.instruction_pointer, interpreter.jumptable.index_pointer);
+    let dest_pointer = unsafe { interpreter.contract.bytecode.as_ptr().add(dest) };
+
+    if dest_pointer < pointer {
+        return interpreter.jumptable.jumps[dest];
+    }
+
+    let jumps = &mut interpreter.jumptable.jumps;
+
+    while pointer <= dest_pointer {
+        let opcode = unsafe { *pointer };
+
+        if opcode == opcode::JUMPDEST {
+            let index = unsafe {
+                pointer.offset_from(interpreter.contract.bytecode.as_ptr()) as usize
+            };
+            jumps[index] = true;
+        }
+
+        let count = match opcode {
+            opcode::PUSH1..=opcode::PUSH32 => ((opcode - opcode::PUSH1) + 2) as usize,
+            _ => 1,
+        };
+
+        pointer = unsafe { pointer.add(count) };
+    }
+
+    interpreter.jumptable.index_pointer = pointer;
+
+    return jumps[dest];
 }
 
 pub fn jumpdest(interpreter: &mut Interpreter, _host: &mut dyn Host) {
     gas!(interpreter, gas::JUMPDEST);
-    if let Some(ret) = interpreter.add_next_gas_block(interpreter.program_counter()) {
-        interpreter.instruction_result = ret;
-    }
+    let pc = interpreter.program_counter();
+    interpreter.jumptable.jumps[pc - 1] = true;
 }
 
 pub fn pc(interpreter: &mut Interpreter, _host: &mut dyn Host) {
-    // gas!(interp, gas::BASE);
+    gas!(interpreter, gas::BASE);
     push!(interpreter, U256::from(interpreter.program_counter() - 1));
 }
 
